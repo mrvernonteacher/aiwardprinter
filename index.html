@@ -7,7 +7,6 @@
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.min.js"></script>
     
     <style>
         body { font-family: sans-serif; background-color: #f4f4f9; padding: 20px; }
@@ -41,9 +40,28 @@
 
 <script>
     const templates = {
-        jv: { filename: 'jv_template.pdf', fields: { name: { x: 140, y: 118, maxWidth: 106, fontSize: 36, align: 'center', useHandwriting: true }, year: { x: 162, y: 168, maxWidth: 20, fontSize: 28, align: 'left', useHandwriting: false, isItalic: true } } },
-        scholar: { filename: 'scholar_template.pdf', fields: { name: { x: 182, y: 130, maxWidth: 130, fontSize: 32, align: 'center', useHandwriting: true }, year: { x: 179, y: 157, maxWidth: 32, fontSize: 16, align: 'center', useHandwriting: false } } },
-        varsity: { filename: 'varsity_template.pdf', fields: { name: { x: 177.5, y: 120, maxWidth: 139, fontSize: 44, align: 'center', useHandwriting: true }, sport: { x: 140, y: 157, maxWidth: 66, fontSize: 28, align: 'center', useHandwriting: false }, year: { x: 215, y: 157, maxWidth: 66, fontSize: 18, align: 'center', useHandwriting: false } } }
+        jv: {
+            filename: 'jv_template.pdf',
+            fields: {
+                name:  { x: 140, y: 118, maxWidth: 106, fontSize: 36, align: 'center' },
+                year:  { x: 162, y: 168, maxWidth: 20,  fontSize: 28, align: 'left' }  
+            }
+        },
+        scholar: {
+            filename: 'scholar_template.pdf',
+            fields: {
+                name:  { x: 182, y: 130, maxWidth: 130, fontSize: 32, align: 'center' },
+                year:  { x: 179, y: 157, maxWidth: 32,  fontSize: 16, align: 'center' } 
+            }
+        },
+        varsity: {
+            filename: 'varsity_template.pdf',
+            fields: {
+                name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44, align: 'center' },
+                sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28, align: 'center' },
+                year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18, align: 'center' }
+            }
+        }
     };
 
     const mmToPt = (mm) => mm * 2.83465;
@@ -54,11 +72,11 @@
         const statusEl = document.getElementById('status');
 
         if (!fileInput) {
-            statusEl.innerText = "Error: Please upload a CSV file.";
+            statusEl.innerText = "Error: Please upload a CSV file first.";
             return;
         }
 
-        statusEl.innerText = "Generating... this may take a moment to fetch the font.";
+        statusEl.innerText = "Generating certificates...";
         statusEl.style.color = "#5cb85c";
 
         Papa.parse(fileInput, {
@@ -80,60 +98,71 @@
     async function buildPdf(studentData, config) {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
-        // 1. Fetch Dancing Script directly from Google's stable CDN
-        const fontUrl = 'https://fonts.gstatic.com/s/dancingscript/v25/If2QXeTY95SJAks8yW70K677S7mYp9ceO86_O-M.ttf';
-        const fontResponse = await fetch(fontUrl);
-        const fontBuffer = await fontResponse.arrayBuffer();
-
-        // 2. Fetch Template
         const templateResponse = await fetch(`./${config.filename}`);
+        if (!templateResponse.ok) throw new Error(`Template file ${config.filename} not found.`);
         const templateBytes = await templateResponse.arrayBuffer();
 
         const finalPdf = await PDFDocument.create();
-        finalPdf.registerFontkit(window.fontkit);
         
-        // 3. Embed fonts (Subset false is crucial here)
-        const fontHandwriting = await finalPdf.embedFont(fontBuffer, { subset: false });
-        const fontStandard = await finalPdf.embedFont(StandardFonts.HelveticaBold);
-        const fontItalic = await finalPdf.embedFont(StandardFonts.HelveticaBoldOblique);
+        // We use these standard fonts because they NEVER fail.
+        const fontName = await finalPdf.embedFont(StandardFonts.TimesRomanItalic);
+        const fontBold = await finalPdf.embedFont(StandardFonts.HelveticaBold);
 
         for (const student of studentData) {
             const studentDoc = await PDFDocument.load(templateBytes);
             const page = studentDoc.getPages()[0];
             const { height: pageHeight } = page.getSize();
             
-            const drawText = (text, fieldConfig) => {
+            const drawTextContent = (text, fieldConfig, useItalic) => {
                 if (!text) return;
-                const cleanText = String(text).trim();
-                const activeFont = fieldConfig.useHandwriting ? fontHandwriting : (fieldConfig.isItalic ? fontItalic : fontStandard);
                 
+                const activeFont = useItalic ? fontName : fontBold;
                 let currentSize = fieldConfig.fontSize;
-                let textWidth = activeFont.widthOfTextAtSize(cleanText, currentSize);
+                let textWidth = activeFont.widthOfTextAtSize(text, currentSize);
                 const maxPtWidth = mmToPt(fieldConfig.maxWidth);
 
                 while (textWidth > maxPtWidth && currentSize > 8) {
                     currentSize -= 1;
-                    textWidth = activeFont.widthOfTextAtSize(cleanText, currentSize);
+                    textWidth = activeFont.widthOfTextAtSize(text, currentSize);
                 }
 
                 let pdfX = mmToPt(fieldConfig.x);
-                if (fieldConfig.align === 'center') pdfX -= (textWidth / 2);
-                const pdfY = pageHeight - mmToPt(fieldConfig.y);
+                if (fieldConfig.align === 'center') {
+                    pdfX = pdfX - (textWidth / 2);
+                }
 
-                page.drawText(cleanText, { x: pdfX, y: pdfY, size: currentSize, font: activeFont, color: rgb(0, 0, 0) });
+                const pdfY = pageHeight - mmToPt(fieldConfig.y); 
+
+                page.drawText(text, {
+                    x: pdfX,
+                    y: pdfY,
+                    size: currentSize,
+                    font: activeFont,
+                    color: rgb(0, 0, 0)
+                });
             };
 
             const fullName = `${student.FirstName || ''} ${student.LastName || ''}`.trim();
-            drawText(fullName, config.fields.name);
-            if (config.fields.sport) drawText(student.Sport, config.fields.sport);
-            if (config.fields.year && student.Year) {
-                let y = student.Year;
-                if (config.filename === 'jv_template.pdf') y = y.slice(-2);
-                drawText(y, config.fields.year);
+            
+            // Draw Name in Italic
+            drawTextContent(fullName, config.fields.name, true);
+            
+            // Draw Sport in Bold
+            if (config.fields.sport && student.Sport) {
+                drawTextContent(student.Sport, config.fields.sport, false);
             }
 
-            const [copied] = await finalPdf.copyPages(studentDoc, [0]);
-            finalPdf.addPage(copied);
+            // Draw Year in Bold (or 2-digit for JV)
+            if (config.fields.year && student.Year) {
+                let displayYear = student.Year;
+                if (config.filename === 'jv_template.pdf' && displayYear.length >= 2) {
+                    displayYear = displayYear.slice(-2);
+                }
+                drawTextContent(displayYear, config.fields.year, false);
+            }
+
+            const [copiedPage] = await finalPdf.copyPages(studentDoc, [0]);
+            finalPdf.addPage(copiedPage);
         }
 
         const pdfBytes = await finalPdf.save();
