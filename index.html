@@ -11,9 +11,14 @@
     <style>
         body { font-family: sans-serif; background-color: #f4f4f9; padding: 20px; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h2 { margin-top: 0; color: #333; }
+        h2 { margin-top: 0; color: #333; text-align: center; }
+        
+        /* New styling for the template download button */
+        .template-btn { display: block; background-color: #6c757d; color: white; text-align: center; text-decoration: none; padding: 10px; font-size: 14px; border-radius: 4px; margin-bottom: 25px; transition: background-color 0.2s; }
+        .template-btn:hover { background-color: #5a6268; }
+        
         label { font-weight: bold; display: block; margin-top: 15px; }
-        select, input[type="file"] { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
+        select, input[type="file"] { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
         button { background-color: #0056b3; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; }
         button:hover { background-color: #004494; }
         #status { margin-top: 20px; font-weight: bold; color: #d9534f; text-align: center; }
@@ -23,6 +28,10 @@
 
 <div class="container">
     <h2>Walton Certificate Generator</h2>
+    
+    <a href="./roster_template.csv" download class="template-btn">
+        ⬇️ Download Blank CSV Template
+    </a>
     
     <label for="certType">1. Select Award Type:</label>
     <select id="certType">
