@@ -12,10 +12,8 @@
         body { font-family: sans-serif; background-color: #f4f4f9; padding: 20px; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h2 { margin-top: 0; color: #333; text-align: center; }
-        
         .template-btn { display: block; background-color: #6c757d; color: white; text-align: center; text-decoration: none; padding: 10px; font-size: 14px; border-radius: 4px; margin-bottom: 25px; transition: background-color 0.2s; }
         .template-btn:hover { background-color: #5a6268; }
-        
         label { font-weight: bold; display: block; margin-top: 15px; }
         select, input[type="file"] { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
         button { background-color: #0056b3; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; }
@@ -47,29 +45,29 @@
 </div>
 
 <script>
-    // Configuration dictionary for the layouts
+    // Configuration dictionary (Font Type removed, using coordinates from your measurements)
     const templates = {
         jv: {
             filename: 'jv_template.pdf',
             fields: {
-                name:  { x: 195, y: 105, maxWidth: 100, fontSize: 36, fontType: 'custom' },
-                sport: { x: 195, y: 135, maxWidth: 80,  fontSize: 24, fontType: 'standard' }, 
-                year:  { x: 172, y: 158, maxWidth: 15,  fontSize: 16, fontType: 'standard' }  
+                name:  { x: 195, y: 105, maxWidth: 100, fontSize: 36 },
+                sport: { x: 195, y: 135, maxWidth: 80,  fontSize: 24 }, 
+                year:  { x: 172, y: 158, maxWidth: 15,  fontSize: 16 }  
             }
         },
         scholar: {
             filename: 'scholar_template.pdf',
             fields: {
-                name:  { x: 175, y: 125, maxWidth: 110, fontSize: 32, fontType: 'custom' },
-                year:  { x: 155, y: 165, maxWidth: 40,  fontSize: 16, fontType: 'standard' } 
+                name:  { x: 175, y: 125, maxWidth: 110, fontSize: 32 },
+                year:  { x: 155, y: 165, maxWidth: 40,  fontSize: 16 } 
             }
         },
         varsity: {
             filename: 'varsity_template.pdf',
             fields: {
-                name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44, fontType: 'custom' },
-                sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28, fontType: 'standard' },
-                year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18, fontType: 'standard' }
+                name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44 },
+                sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28 },
+                year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18 }
             }
         }
     };
@@ -108,17 +106,6 @@
 
     async function buildPdf(studentData, config) {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
-        
-        // Load the custom handwriting font
-        let customFontBytes;
-        try {
-            const fontResponse = await fetch('./handwriting.ttf');
-            if (!fontResponse.ok) throw new Error("Custom font not found");
-            customFontBytes = await fontResponse.arrayBuffer();
-        } catch (e) {
-            alert("Could not load handwriting.ttf. Please ensure it is in the same folder on GitHub.");
-            throw e;
-        }
 
         // Fetch the blank template PDF
         const templateResponse = await fetch(`./${config.filename}`);
@@ -128,12 +115,8 @@
         // Create the master PDF
         const finalPdf = await PDFDocument.create();
         
-        // Register fontkit (required for custom TTF fonts)
-        finalPdf.registerFontkit(window.fontkit);
-        
-        // Embed the fonts
-        const fontStandard = await finalPdf.embedFont(StandardFonts.HelveticaBold);
-        const fontCustom = await finalPdf.embedFont(customFontBytes);
+        // Embed the standard font
+        const font = await finalPdf.embedFont(StandardFonts.HelveticaBold);
 
         // Process each student
         for (const student of studentData) {
@@ -144,17 +127,14 @@
             const drawCenteredText = (text, fieldConfig) => {
                 if (!text) return;
                 
-                // Determine which font to use
-                const activeFont = fieldConfig.fontType === 'custom' ? fontCustom : fontStandard;
-                
                 let currentSize = fieldConfig.fontSize;
-                let textWidth = activeFont.widthOfTextAtSize(text, currentSize);
+                let textWidth = font.widthOfTextAtSize(text, currentSize);
                 const maxPtWidth = mmToPt(fieldConfig.maxWidth);
 
                 // Auto-scale down if text is too wide for boundaries
                 while (textWidth > maxPtWidth && currentSize > 10) {
                     currentSize -= 1;
-                    textWidth = activeFont.widthOfTextAtSize(text, currentSize);
+                    textWidth = font.widthOfTextAtSize(text, currentSize);
                 }
 
                 const pdfX = mmToPt(fieldConfig.x) - (textWidth / 2);
@@ -164,7 +144,7 @@
                     x: pdfX,
                     y: pdfY,
                     size: currentSize,
-                    font: activeFont,
+                    font: font,
                     color: rgb(0, 0, 0)
                 });
             };
@@ -196,7 +176,5 @@
         link.click();
     }
 </script>
-
-<script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.min.js"></script>
 </body>
 </html>
