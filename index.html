@@ -45,28 +45,29 @@
 </div>
 
 <script>
-    // All X coordinates shifted to the right by exactly 2mm
+    // New Configuration with explicit 'align' properties
     const templates = {
         jv: {
             filename: 'jv_template.pdf',
             fields: {
-                name:  { x: 142, y: 118, maxWidth: 106, fontSize: 36 },
-                year:  { x: 170, y: 166, maxWidth: 12,  fontSize: 16 }  
+                name:  { x: 143, y: 118, maxWidth: 106, fontSize: 36, align: 'center' },
+                // Left aligned at the exact left boundary (162mm), much larger font
+                year:  { x: 162, y: 166, maxWidth: 20,  fontSize: 28, align: 'left' }  
             }
         },
         scholar: {
             filename: 'scholar_template.pdf',
             fields: {
-                name:  { x: 184, y: 130, maxWidth: 130, fontSize: 32 },
-                year:  { x: 181, y: 157, maxWidth: 32,  fontSize: 16 } 
+                name:  { x: 185, y: 130, maxWidth: 130, fontSize: 32, align: 'center' },
+                year:  { x: 180, y: 157, maxWidth: 32,  fontSize: 16, align: 'center' } 
             }
         },
         varsity: {
             filename: 'varsity_template.pdf',
             fields: {
-                name:  { x: 179.5, y: 120, maxWidth: 139, fontSize: 44 },
-                sport: { x: 142,   y: 157, maxWidth: 66,  fontSize: 28 },
-                year:  { x: 217,   y: 157, maxWidth: 66,  fontSize: 18 }
+                name:  { x: 180.5, y: 120, maxWidth: 139, fontSize: 44, align: 'center' },
+                sport: { x: 142,   y: 157, maxWidth: 66,  fontSize: 28, align: 'center' },
+                year:  { x: 216,   y: 157, maxWidth: 66,  fontSize: 18, align: 'center' }
             }
         }
     };
@@ -119,7 +120,8 @@
             
             const { height: pageHeight } = page.getSize();
             
-            const drawCenteredText = (text, fieldConfig) => {
+            // Dynamic drawing logic based on the 'align' property
+            const drawTextContent = (text, fieldConfig) => {
                 if (!text) return;
                 
                 let currentSize = fieldConfig.fontSize;
@@ -131,7 +133,16 @@
                     textWidth = fontStandard.widthOfTextAtSize(text, currentSize);
                 }
 
-                const pdfX = mmToPt(fieldConfig.x) - (textWidth / 2);
+                let pdfX;
+                if (fieldConfig.align === 'left') {
+                    pdfX = mmToPt(fieldConfig.x);
+                } else if (fieldConfig.align === 'right') {
+                    pdfX = mmToPt(fieldConfig.x) - textWidth;
+                } else {
+                    // Default to center
+                    pdfX = mmToPt(fieldConfig.x) - (textWidth / 2);
+                }
+
                 const pdfY = pageHeight - mmToPt(fieldConfig.y); 
 
                 page.drawText(text, {
@@ -147,20 +158,18 @@
             const lName = student.LastName || '';
             const fullName = `${fName} ${lName}`.trim();
 
-            drawCenteredText(fullName, config.fields.name);
+            drawTextContent(fullName, config.fields.name);
             
             if (config.fields.sport && student.Sport) {
-                drawCenteredText(student.Sport, config.fields.sport);
+                drawTextContent(student.Sport, config.fields.sport);
             }
             if (config.fields.year && student.Year) {
                 let displayYear = student.Year;
                 
-                // JV Logic patched: Always grabs the last two characters of the string 
-                // Handles formats like "2026", "2025-2026", or "25-26"
                 if (config.filename === 'jv_template.pdf' && displayYear.length >= 2) {
                     displayYear = displayYear.slice(-2);
                 }
-                drawCenteredText(displayYear, config.fields.year);
+                drawTextContent(displayYear, config.fields.year);
             }
 
             const [copiedPage] = await finalPdf.copyPages(studentDoc, [0]);
@@ -172,7 +181,6 @@
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         
-        // Grab the selected type from the dropdown for the filename
         const certType = document.getElementById('certType').value;
         link.download = `Certificates_${certType}_${Date.now()}.pdf`;
         link.click();
