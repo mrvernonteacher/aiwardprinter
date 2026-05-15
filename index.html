@@ -45,7 +45,6 @@
 </div>
 
 <script>
-    // Configuration dictionary with Y-values shifted UP by 10mm
     const templates = {
         jv: {
             filename: 'jv_template.pdf',
@@ -65,8 +64,6 @@
         varsity: {
             filename: 'varsity_template.pdf',
             fields: {
-                // X coordinates remain your perfect measurements. 
-                // Y coordinates reduced by 10mm to lift text up off the line.
                 name:  { x: 177.5, y: 110, maxWidth: 139, fontSize: 44, fontType: 'custom' },
                 sport: { x: 140,   y: 147, maxWidth: 66,  fontSize: 28, fontType: 'standard' },
                 year:  { x: 215,   y: 147, maxWidth: 66,  fontSize: 18, fontType: 'standard' }
@@ -82,7 +79,7 @@
         const statusEl = document.getElementById('status');
 
         if (!fileInput) {
-            statusEl.innerText = "Please upload a CSV file first.";
+            statusEl.innerText = "Error: Please upload a CSV file first.";
             statusEl.style.color = "#d9534f";
             return;
         }
@@ -98,8 +95,9 @@
                     await buildPdf(results.data, templates[certType]);
                     statusEl.innerText = "Success! PDF downloaded.";
                 } catch (error) {
+                    // NEW: Print the exact error message to the screen
                     console.error(error);
-                    statusEl.innerText = "An error occurred. Check the console.";
+                    statusEl.innerText = `Error: ${error.message}`;
                     statusEl.style.color = "#d9534f";
                 }
             }
@@ -109,20 +107,17 @@
     async function buildPdf(studentData, config) {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
-        // Fetch custom handwriting font
         let customFontBytes;
         try {
             const fontResponse = await fetch('./handwriting.ttf');
-            if (!fontResponse.ok) throw new Error("Custom font not found");
+            if (!fontResponse.ok) throw new Error("Could not find handwriting.ttf on the server. Check spelling and capitalization.");
             customFontBytes = await fontResponse.arrayBuffer();
         } catch (e) {
-            alert("Could not load handwriting.ttf. Ensure it is uploaded to your GitHub folder.");
-            throw e;
+            throw new Error(`Font Load Failed: ${e.message}`);
         }
 
-        // Fetch template
         const templateResponse = await fetch(`./${config.filename}`);
-        if (!templateResponse.ok) throw new Error(`Could not load template: ${config.filename}`);
+        if (!templateResponse.ok) throw new Error(`Could not find template PDF: ${config.filename}. Check spelling and capitalization.`);
         const templateBytes = await templateResponse.arrayBuffer();
 
         const finalPdf = await PDFDocument.create();
@@ -136,7 +131,6 @@
             const pages = studentDoc.getPages();
             const page = pages[0];
             
-            // Dynamically get the exact page height of the uploaded PDF
             const { height: pageHeight } = page.getSize();
             
             const drawCenteredText = (text, fieldConfig) => {
@@ -154,8 +148,6 @@
                 }
 
                 const pdfX = mmToPt(fieldConfig.x) - (textWidth / 2);
-                
-                // Using dynamic page height instead of hardcoded 8.5 inches
                 const pdfY = pageHeight - mmToPt(fieldConfig.y); 
 
                 page.drawText(text, {
