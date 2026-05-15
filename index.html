@@ -14,10 +14,10 @@
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h2 { margin-top: 0; color: #333; text-align: center; }
         label { font-weight: bold; display: block; margin-top: 15px; }
-        select, input[type="file"] { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        button { background-color: #0056b3; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 10px;}
+        select, input[type="file"] { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #0056b3; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; }
         button:hover { background-color: #004494; }
-        #status { margin-top: 20px; font-weight: bold; color: #d9534f; text-align: center; white-space: pre-wrap; }
+        #status { margin-top: 20px; font-weight: bold; color: #d9534f; text-align: center; }
     </style>
 </head>
 <body>
@@ -34,67 +34,40 @@
     
     <label for="csvFile">2. Upload Roster (CSV):</label>
     <input type="file" id="csvFile" accept=".csv">
-
-    <label for="fontFile">3. Upload Handwriting Font (.ttf):</label>
-    <input type="file" id="fontFile" accept=".ttf">
     
     <button onclick="processFiles()">Generate Print File</button>
     <p id="status"></p>
 </div>
 
 <script>
-    // Configuration with your optical bumps included
     const templates = {
-        jv: {
-            filename: 'jv_template.pdf',
-            fields: {
-                name:  { x: 140, y: 118, maxWidth: 106, fontSize: 36, align: 'center', useHandwriting: true },
-                year:  { x: 162, y: 168, maxWidth: 20,  fontSize: 28, align: 'left',   useHandwriting: false, isItalic: true }  
-            }
-        },
-        scholar: {
-            filename: 'scholar_template.pdf',
-            fields: {
-                name:  { x: 182, y: 130, maxWidth: 130, fontSize: 32, align: 'center', useHandwriting: true },
-                year:  { x: 179, y: 157, maxWidth: 32,  fontSize: 16, align: 'center', useHandwriting: false } 
-            }
-        },
-        varsity: {
-            filename: 'varsity_template.pdf',
-            fields: {
-                name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44, align: 'center', useHandwriting: true },
-                sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28, align: 'center', useHandwriting: false },
-                year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18, align: 'center', useHandwriting: false }
-            }
-        }
+        jv: { filename: 'jv_template.pdf', fields: { name: { x: 140, y: 118, maxWidth: 106, fontSize: 36, align: 'center', useHandwriting: true }, year: { x: 162, y: 168, maxWidth: 20, fontSize: 28, align: 'left', useHandwriting: false, isItalic: true } } },
+        scholar: { filename: 'scholar_template.pdf', fields: { name: { x: 182, y: 130, maxWidth: 130, fontSize: 32, align: 'center', useHandwriting: true }, year: { x: 179, y: 157, maxWidth: 32, fontSize: 16, align: 'center', useHandwriting: false } } },
+        varsity: { filename: 'varsity_template.pdf', fields: { name: { x: 177.5, y: 120, maxWidth: 139, fontSize: 44, align: 'center', useHandwriting: true }, sport: { x: 140, y: 157, maxWidth: 66, fontSize: 28, align: 'center', useHandwriting: false }, year: { x: 215, y: 157, maxWidth: 66, fontSize: 18, align: 'center', useHandwriting: false } } }
     };
 
     const mmToPt = (mm) => mm * 2.83465;
 
     async function processFiles() {
-        const csvInput = document.getElementById('csvFile').files[0];
-        const fontInput = document.getElementById('fontFile').files[0];
+        const fileInput = document.getElementById('csvFile').files[0];
         const certType = document.getElementById('certType').value;
         const statusEl = document.getElementById('status');
 
-        if (!csvInput || !fontInput) {
-            statusEl.innerText = "Error: Please upload both CSV and Font file.";
-            statusEl.style.color = "#d9534f";
+        if (!fileInput) {
+            statusEl.innerText = "Error: Please upload a CSV file.";
             return;
         }
 
-        statusEl.innerText = "Generating PDF... please wait.";
+        statusEl.innerText = "Generating... this may take a moment to fetch the font.";
         statusEl.style.color = "#5cb85c";
-        
-        const fontBuffer = await fontInput.arrayBuffer();
 
-        Papa.parse(csvInput, {
+        Papa.parse(fileInput, {
             header: true,
             skipEmptyLines: true,
             complete: async function(results) {
                 try {
-                    await buildPdf(results.data, templates[certType], fontBuffer);
-                    statusEl.innerText = "Success! PDF generated.";
+                    await buildPdf(results.data, templates[certType]);
+                    statusEl.innerText = "Success! PDF downloaded.";
                 } catch (error) {
                     console.error(error);
                     statusEl.innerText = `Error: ${error.message}`;
@@ -104,26 +77,23 @@
         });
     }
 
-    async function buildPdf(studentData, config, fontBuffer) {
+    async function buildPdf(studentData, config) {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
-        // Fetch the template from the server
+        // 1. Fetch Dancing Script directly from Google's stable CDN
+        const fontUrl = 'https://fonts.gstatic.com/s/dancingscript/v25/If2QXeTY95SJAks8yW70K677S7mYp9ceO86_O-M.ttf';
+        const fontResponse = await fetch(fontUrl);
+        const fontBuffer = await fontResponse.arrayBuffer();
+
+        // 2. Fetch Template
         const templateResponse = await fetch(`./${config.filename}`);
-        if (!templateResponse.ok) throw new Error(`Could not find ${config.filename}`);
         const templateBytes = await templateResponse.arrayBuffer();
 
         const finalPdf = await PDFDocument.create();
         finalPdf.registerFontkit(window.fontkit);
         
-        // Embed Handwriting Font with subset:false to prevent gibberish characters
-        let fontHandwriting;
-        try {
-            fontHandwriting = await finalPdf.embedFont(fontBuffer, { subset: false });
-        } catch (e) {
-            console.error("Font embedding failed", e);
-            throw new Error("The font file is incompatible with the PDF library. Try a different .ttf file.");
-        }
-
+        // 3. Embed fonts (Subset false is crucial here)
+        const fontHandwriting = await finalPdf.embedFont(fontBuffer, { subset: false });
         const fontStandard = await finalPdf.embedFont(StandardFonts.HelveticaBold);
         const fontItalic = await finalPdf.embedFont(StandardFonts.HelveticaBoldOblique);
 
@@ -132,9 +102,8 @@
             const page = studentDoc.getPages()[0];
             const { height: pageHeight } = page.getSize();
             
-            const drawTextContent = (text, fieldConfig) => {
+            const drawText = (text, fieldConfig) => {
                 if (!text) return;
-                
                 const cleanText = String(text).trim();
                 const activeFont = fieldConfig.useHandwriting ? fontHandwriting : (fieldConfig.isItalic ? fontItalic : fontStandard);
                 
@@ -142,45 +111,29 @@
                 let textWidth = activeFont.widthOfTextAtSize(cleanText, currentSize);
                 const maxPtWidth = mmToPt(fieldConfig.maxWidth);
 
-                // Scale font down if it exceeds the line width
                 while (textWidth > maxPtWidth && currentSize > 8) {
                     currentSize -= 1;
                     textWidth = activeFont.widthOfTextAtSize(cleanText, currentSize);
                 }
 
                 let pdfX = mmToPt(fieldConfig.x);
-                if (fieldConfig.align === 'center') {
-                    pdfX -= (textWidth / 2);
-                }
-                
+                if (fieldConfig.align === 'center') pdfX -= (textWidth / 2);
                 const pdfY = pageHeight - mmToPt(fieldConfig.y);
 
-                page.drawText(cleanText, {
-                    x: pdfX,
-                    y: pdfY,
-                    size: currentSize,
-                    font: activeFont,
-                    color: rgb(0, 0, 0)
-                });
+                page.drawText(cleanText, { x: pdfX, y: pdfY, size: currentSize, font: activeFont, color: rgb(0, 0, 0) });
             };
 
             const fullName = `${student.FirstName || ''} ${student.LastName || ''}`.trim();
-            drawTextContent(fullName, config.fields.name);
-            
-            if (config.fields.sport && student.Sport) {
-                drawTextContent(student.Sport, config.fields.sport);
-            }
-            
+            drawText(fullName, config.fields.name);
+            if (config.fields.sport) drawText(student.Sport, config.fields.sport);
             if (config.fields.year && student.Year) {
-                let y = String(student.Year);
-                if (config.filename === 'jv_template.pdf') {
-                    y = y.slice(-2);
-                }
-                drawTextContent(y, config.fields.year);
+                let y = student.Year;
+                if (config.filename === 'jv_template.pdf') y = y.slice(-2);
+                drawText(y, config.fields.year);
             }
 
-            const [copiedPage] = await finalPdf.copyPages(studentDoc, [0]);
-            finalPdf.addPage(copiedPage);
+            const [copied] = await finalPdf.copyPages(studentDoc, [0]);
+            finalPdf.addPage(copied);
         }
 
         const pdfBytes = await finalPdf.save();
