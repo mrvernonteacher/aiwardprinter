@@ -45,29 +45,31 @@
 </div>
 
 <script>
-    // Configuration dictionary (Font Type removed, using coordinates from your measurements)
+    // Configuration dictionary with Y-values shifted UP by 10mm
     const templates = {
         jv: {
             filename: 'jv_template.pdf',
             fields: {
-                name:  { x: 195, y: 105, maxWidth: 100, fontSize: 36 },
-                sport: { x: 195, y: 135, maxWidth: 80,  fontSize: 24 }, 
-                year:  { x: 172, y: 158, maxWidth: 15,  fontSize: 16 }  
+                name:  { x: 195, y: 95, maxWidth: 100, fontSize: 36, fontType: 'custom' },
+                sport: { x: 195, y: 125, maxWidth: 80,  fontSize: 24, fontType: 'standard' }, 
+                year:  { x: 172, y: 148, maxWidth: 15,  fontSize: 16, fontType: 'standard' }  
             }
         },
         scholar: {
             filename: 'scholar_template.pdf',
             fields: {
-                name:  { x: 175, y: 125, maxWidth: 110, fontSize: 32 },
-                year:  { x: 155, y: 165, maxWidth: 40,  fontSize: 16 } 
+                name:  { x: 175, y: 115, maxWidth: 110, fontSize: 32, fontType: 'custom' },
+                year:  { x: 155, y: 155, maxWidth: 40,  fontSize: 16, fontType: 'standard' } 
             }
         },
         varsity: {
             filename: 'varsity_template.pdf',
             fields: {
-                name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44 },
-                sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28 },
-                year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18 }
+                // X coordinates remain your perfect measurements. 
+                // Y coordinates reduced by 10mm to lift text up off the line.
+                name:  { x: 177.5, y: 110, maxWidth: 139, fontSize: 44, fontType: 'custom' },
+                sport: { x: 140,   y: 147, maxWidth: 66,  fontSize: 28, fontType: 'standard' },
+                year:  { x: 215,   y: 147, maxWidth: 66,  fontSize: 18, fontType: 'standard' }
             }
         }
     };
@@ -107,44 +109,60 @@
     async function buildPdf(studentData, config) {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
-        // Fetch the blank template PDF
+        // Fetch custom handwriting font
+        let customFontBytes;
+        try {
+            const fontResponse = await fetch('./handwriting.ttf');
+            if (!fontResponse.ok) throw new Error("Custom font not found");
+            customFontBytes = await fontResponse.arrayBuffer();
+        } catch (e) {
+            alert("Could not load handwriting.ttf. Ensure it is uploaded to your GitHub folder.");
+            throw e;
+        }
+
+        // Fetch template
         const templateResponse = await fetch(`./${config.filename}`);
         if (!templateResponse.ok) throw new Error(`Could not load template: ${config.filename}`);
         const templateBytes = await templateResponse.arrayBuffer();
 
-        // Create the master PDF
         const finalPdf = await PDFDocument.create();
+        finalPdf.registerFontkit(window.fontkit);
         
-        // Embed the standard font
-        const font = await finalPdf.embedFont(StandardFonts.HelveticaBold);
+        const fontStandard = await finalPdf.embedFont(StandardFonts.HelveticaBold);
+        const fontCustom = await finalPdf.embedFont(customFontBytes);
 
-        // Process each student
         for (const student of studentData) {
             const studentDoc = await PDFDocument.load(templateBytes);
             const pages = studentDoc.getPages();
             const page = pages[0];
             
+            // Dynamically get the exact page height of the uploaded PDF
+            const { height: pageHeight } = page.getSize();
+            
             const drawCenteredText = (text, fieldConfig) => {
                 if (!text) return;
                 
+                const activeFont = fieldConfig.fontType === 'custom' ? fontCustom : fontStandard;
+                
                 let currentSize = fieldConfig.fontSize;
-                let textWidth = font.widthOfTextAtSize(text, currentSize);
+                let textWidth = activeFont.widthOfTextAtSize(text, currentSize);
                 const maxPtWidth = mmToPt(fieldConfig.maxWidth);
 
-                // Auto-scale down if text is too wide for boundaries
                 while (textWidth > maxPtWidth && currentSize > 10) {
                     currentSize -= 1;
-                    textWidth = font.widthOfTextAtSize(text, currentSize);
+                    textWidth = activeFont.widthOfTextAtSize(text, currentSize);
                 }
 
                 const pdfX = mmToPt(fieldConfig.x) - (textWidth / 2);
-                const pdfY = mmToPt(215.9 - fieldConfig.y); 
+                
+                // Using dynamic page height instead of hardcoded 8.5 inches
+                const pdfY = pageHeight - mmToPt(fieldConfig.y); 
 
                 page.drawText(text, {
                     x: pdfX,
                     y: pdfY,
                     size: currentSize,
-                    font: font,
+                    font: activeFont,
                     color: rgb(0, 0, 0)
                 });
             };
@@ -167,7 +185,6 @@
             finalPdf.addPage(copiedPage);
         }
 
-        // Save and trigger download
         const pdfBytes = await finalPdf.save();
         const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         const link = document.createElement('a');
@@ -176,5 +193,7 @@
         link.click();
     }
 </script>
+
+<script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.min.js"></script>
 </body>
 </html>
