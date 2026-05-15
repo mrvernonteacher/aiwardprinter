@@ -45,27 +45,28 @@
 </div>
 
 <script>
+    // All X coordinates shifted to the right by exactly 2mm
     const templates = {
         jv: {
             filename: 'jv_template.pdf',
             fields: {
-                name:  { x: 140, y: 118, maxWidth: 106, fontSize: 36 },
-                year:  { x: 168, y: 166, maxWidth: 12,  fontSize: 16 }  
+                name:  { x: 142, y: 118, maxWidth: 106, fontSize: 36 },
+                year:  { x: 170, y: 166, maxWidth: 12,  fontSize: 16 }  
             }
         },
         scholar: {
             filename: 'scholar_template.pdf',
             fields: {
-                name:  { x: 182, y: 130, maxWidth: 130, fontSize: 32 },
-                year:  { x: 179, y: 157, maxWidth: 32,  fontSize: 16 } 
+                name:  { x: 184, y: 130, maxWidth: 130, fontSize: 32 },
+                year:  { x: 181, y: 157, maxWidth: 32,  fontSize: 16 } 
             }
         },
         varsity: {
             filename: 'varsity_template.pdf',
             fields: {
-                name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44 },
-                sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28 },
-                year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18 }
+                name:  { x: 179.5, y: 120, maxWidth: 139, fontSize: 44 },
+                sport: { x: 142,   y: 157, maxWidth: 66,  fontSize: 28 },
+                year:  { x: 217,   y: 157, maxWidth: 66,  fontSize: 18 }
             }
         }
     };
@@ -142,13 +143,10 @@
                 });
             };
 
-            // Aggressively clean the data to remove invisible trailing spaces from Excel
-const fName = (student.FirstName || '').trim();
-const lName = (student.LastName || '').trim();
-// Combine them, and force any double-spaces into a single space
-const fullName = `${fName} ${lName}`.replace(/\s+/g, ' ').trim();
+            const fName = student.FirstName || '';
+            const lName = student.LastName || '';
+            const fullName = `${fName} ${lName}`.trim();
 
-drawCenteredText(fullName, config.fields.name);
             drawCenteredText(fullName, config.fields.name);
             
             if (config.fields.sport && student.Sport) {
@@ -156,7 +154,10 @@ drawCenteredText(fullName, config.fields.name);
             }
             if (config.fields.year && student.Year) {
                 let displayYear = student.Year;
-                if (config.filename === 'jv_template.pdf' && displayYear.length === 4) {
+                
+                // JV Logic patched: Always grabs the last two characters of the string 
+                // Handles formats like "2026", "2025-2026", or "25-26"
+                if (config.filename === 'jv_template.pdf' && displayYear.length >= 2) {
                     displayYear = displayYear.slice(-2);
                 }
                 drawCenteredText(displayYear, config.fields.year);
@@ -170,6 +171,9 @@ drawCenteredText(fullName, config.fields.name);
         const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
+        
+        // Grab the selected type from the dropdown for the filename
+        const certType = document.getElementById('certType').value;
         link.download = `Certificates_${certType}_${Date.now()}.pdf`;
         link.click();
     }
