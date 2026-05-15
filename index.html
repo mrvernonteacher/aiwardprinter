@@ -95,7 +95,6 @@
                     await buildPdf(results.data, templates[certType]);
                     statusEl.innerText = "Success! PDF downloaded.";
                 } catch (error) {
-                    // NEW: Print the exact error message to the screen
                     console.error(error);
                     statusEl.innerText = `Error: ${error.message}`;
                     statusEl.style.color = "#d9534f";
@@ -107,24 +106,29 @@
     async function buildPdf(studentData, config) {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
-        let customFontBytes;
-        try {
-            const fontResponse = await fetch('./handwriting.ttf');
-            if (!fontResponse.ok) throw new Error("Could not find handwriting.ttf on the server. Check spelling and capitalization.");
-            customFontBytes = await fontResponse.arrayBuffer();
-        } catch (e) {
-            throw new Error(`Font Load Failed: ${e.message}`);
-        }
-
+        // Fetch template
         const templateResponse = await fetch(`./${config.filename}`);
-        if (!templateResponse.ok) throw new Error(`Could not find template PDF: ${config.filename}. Check spelling and capitalization.`);
+        if (!templateResponse.ok) throw new Error(`Could not find template PDF: ${config.filename}.`);
         const templateBytes = await templateResponse.arrayBuffer();
 
         const finalPdf = await PDFDocument.create();
         finalPdf.registerFontkit(window.fontkit);
         
+        // Load standard font
         const fontStandard = await finalPdf.embedFont(StandardFonts.HelveticaBold);
-        const fontCustom = await finalPdf.embedFont(customFontBytes);
+        let fontCustom;
+
+        // NEW FALLBACK LOGIC: Try to load the custom font safely
+        try {
+            const fontResponse = await fetch('./handwriting.ttf');
+            if (!fontResponse.ok) throw new Error("File not found on server.");
+            const customFontBytes = await fontResponse.arrayBuffer();
+            fontCustom = await finalPdf.embedFont(customFontBytes); // This is where the buffer error occurs
+        } catch (e) {
+            console.error("Custom font error:", e);
+            alert("Notice: Your handwriting.ttf file is corrupted or missing. The app is substituting the standard font so you can still preview your spacing.");
+            fontCustom = fontStandard; // Fallback to standard font so the app doesn't crash
+        }
 
         for (const student of studentData) {
             const studentDoc = await PDFDocument.load(templateBytes);
