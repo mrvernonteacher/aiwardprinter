@@ -142,7 +142,13 @@
                 });
             };
 
-            const fullName = `${student.FirstName || ''} ${student.LastName || ''}`.trim();
+            // Aggressively clean the data to remove invisible trailing spaces from Excel
+const fName = (student.FirstName || '').trim();
+const lName = (student.LastName || '').trim();
+// Combine them, and force any double-spaces into a single space
+const fullName = `${fName} ${lName}`.replace(/\s+/g, ' ').trim();
+
+drawCenteredText(fullName, config.fields.name);
             drawCenteredText(fullName, config.fields.name);
             
             if (config.fields.sport && student.Sport) {
