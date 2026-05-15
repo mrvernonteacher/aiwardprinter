@@ -46,10 +46,23 @@
 
 <script>
     const templates = {
+        jv: {
+            filename: 'jv_template.pdf',
+            fields: {
+                name:  { x: 140, y: 118, maxWidth: 106, fontSize: 36 },
+                year:  { x: 168, y: 166, maxWidth: 12,  fontSize: 16 }  
+            }
+        },
+        scholar: {
+            filename: 'scholar_template.pdf',
+            fields: {
+                name:  { x: 182, y: 130, maxWidth: 130, fontSize: 32 },
+                year:  { x: 179, y: 157, maxWidth: 32,  fontSize: 16 } 
+            }
+        },
         varsity: {
             filename: 'varsity_template.pdf',
             fields: {
-                // Restored your original exact measurements
                 name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44 },
                 sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28 },
                 year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18 }
@@ -61,6 +74,7 @@
 
     async function processFiles() {
         const fileInput = document.getElementById('csvFile').files[0];
+        const certType = document.getElementById('certType').value;
         const statusEl = document.getElementById('status');
 
         if (!fileInput) {
@@ -76,7 +90,7 @@
             skipEmptyLines: true,
             complete: async function(results) {
                 try {
-                    await buildPdf(results.data, templates['varsity']);
+                    await buildPdf(results.data, templates[certType]);
                     statusEl.innerText = "Success! PDF downloaded.";
                 } catch (error) {
                     console.error(error);
@@ -90,7 +104,6 @@
     async function buildPdf(studentData, config) {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
-        // Fetch template
         const templateResponse = await fetch(`./${config.filename}`);
         if (!templateResponse.ok) throw new Error(`Could not find template PDF: ${config.filename}.`);
         const templateBytes = await templateResponse.arrayBuffer();
@@ -131,8 +144,17 @@
 
             const fullName = `${student.FirstName || ''} ${student.LastName || ''}`.trim();
             drawCenteredText(fullName, config.fields.name);
-            if (student.Sport) drawCenteredText(student.Sport, config.fields.sport);
-            if (student.Year) drawCenteredText(student.Year, config.fields.year);
+            
+            if (config.fields.sport && student.Sport) {
+                drawCenteredText(student.Sport, config.fields.sport);
+            }
+            if (config.fields.year && student.Year) {
+                let displayYear = student.Year;
+                if (config.filename === 'jv_template.pdf' && displayYear.length === 4) {
+                    displayYear = displayYear.slice(-2);
+                }
+                drawCenteredText(displayYear, config.fields.year);
+            }
 
             const [copiedPage] = await finalPdf.copyPages(studentDoc, [0]);
             finalPdf.addPage(copiedPage);
@@ -142,7 +164,7 @@
         const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `Certificates_${Date.now()}.pdf`;
+        link.download = `Certificates_${certType}_${Date.now()}.pdf`;
         link.click();
     }
 </script>
