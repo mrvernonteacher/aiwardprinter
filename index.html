@@ -45,29 +45,29 @@
 </div>
 
 <script>
-    // New Configuration with explicit 'align' properties
+    // Configuration with pure math coordinates (no nudges), align property, and new fontStyle
     const templates = {
         jv: {
             filename: 'jv_template.pdf',
             fields: {
-                name:  { x: 143, y: 118, maxWidth: 106, fontSize: 36, align: 'center' },
-                // Left aligned at the exact left boundary (162mm), much larger font
-                year:  { x: 162, y: 166, maxWidth: 20,  fontSize: 28, align: 'left' }  
+                name:  { x: 140, y: 118, maxWidth: 106, fontSize: 36, align: 'center' },
+                // Bumped down 2mm (166 -> 168) and set to italic
+                year:  { x: 162, y: 168, maxWidth: 20,  fontSize: 28, align: 'left', fontStyle: 'italic' }  
             }
         },
         scholar: {
             filename: 'scholar_template.pdf',
             fields: {
-                name:  { x: 185, y: 130, maxWidth: 130, fontSize: 32, align: 'center' },
-                year:  { x: 180, y: 157, maxWidth: 32,  fontSize: 16, align: 'center' } 
+                name:  { x: 182, y: 130, maxWidth: 130, fontSize: 32, align: 'center' },
+                year:  { x: 179, y: 157, maxWidth: 32,  fontSize: 16, align: 'center' } 
             }
         },
         varsity: {
             filename: 'varsity_template.pdf',
             fields: {
-                name:  { x: 180.5, y: 120, maxWidth: 139, fontSize: 44, align: 'center' },
-                sport: { x: 142,   y: 157, maxWidth: 66,  fontSize: 28, align: 'center' },
-                year:  { x: 216,   y: 157, maxWidth: 66,  fontSize: 18, align: 'center' }
+                name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44, align: 'center' },
+                sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28, align: 'center' },
+                year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18, align: 'center' }
             }
         }
     };
@@ -111,7 +111,10 @@
         const templateBytes = await templateResponse.arrayBuffer();
 
         const finalPdf = await PDFDocument.create();
+        
+        // Embed both standard bold and italic fonts
         const fontStandard = await finalPdf.embedFont(StandardFonts.HelveticaBold);
+        const fontItalic = await finalPdf.embedFont(StandardFonts.HelveticaBoldOblique);
 
         for (const student of studentData) {
             const studentDoc = await PDFDocument.load(templateBytes);
@@ -120,17 +123,19 @@
             
             const { height: pageHeight } = page.getSize();
             
-            // Dynamic drawing logic based on the 'align' property
             const drawTextContent = (text, fieldConfig) => {
                 if (!text) return;
                 
+                // Select the correct font for this specific field
+                const activeFont = fieldConfig.fontStyle === 'italic' ? fontItalic : fontStandard;
+                
                 let currentSize = fieldConfig.fontSize;
-                let textWidth = fontStandard.widthOfTextAtSize(text, currentSize);
+                let textWidth = activeFont.widthOfTextAtSize(text, currentSize);
                 const maxPtWidth = mmToPt(fieldConfig.maxWidth);
 
                 while (textWidth > maxPtWidth && currentSize > 10) {
                     currentSize -= 1;
-                    textWidth = fontStandard.widthOfTextAtSize(text, currentSize);
+                    textWidth = activeFont.widthOfTextAtSize(text, currentSize);
                 }
 
                 let pdfX;
@@ -139,7 +144,6 @@
                 } else if (fieldConfig.align === 'right') {
                     pdfX = mmToPt(fieldConfig.x) - textWidth;
                 } else {
-                    // Default to center
                     pdfX = mmToPt(fieldConfig.x) - (textWidth / 2);
                 }
 
@@ -149,7 +153,7 @@
                     x: pdfX,
                     y: pdfY,
                     size: currentSize,
-                    font: fontStandard,
+                    font: activeFont,
                     color: rgb(0, 0, 0)
                 });
             };
