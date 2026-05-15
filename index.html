@@ -120,7 +120,7 @@
 
         // NEW FALLBACK LOGIC: Try to load the custom font safely
         try {
-            const fontResponse = await fetch('./handwriting.ttf');
+            const fontResponse = await fetch('./handwriting.ttf?v=' + new Date().getTime());
             if (!fontResponse.ok) throw new Error("File not found on server.");
             const customFontBytes = await fontResponse.arrayBuffer();
             fontCustom = await finalPdf.embedFont(customFontBytes); // This is where the buffer error occurs
