@@ -7,6 +7,7 @@
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.min.js"></script>
     
     <style>
         body { font-family: sans-serif; background-color: #f4f4f9; padding: 20px; }
@@ -40,56 +41,30 @@
 
 <script>
     const templates = {
-        jv: {
-            filename: 'jv_template.pdf',
-            fields: {
-                name:  { x: 140, y: 118, maxWidth: 106, fontSize: 36, align: 'center' },
-                year:  { x: 162, y: 168, maxWidth: 20,  fontSize: 28, align: 'left' }  
-            }
-        },
-        scholar: {
-            filename: 'scholar_template.pdf',
-            fields: {
-                name:  { x: 182, y: 130, maxWidth: 130, fontSize: 32, align: 'center' },
-                year:  { x: 179, y: 157, maxWidth: 32,  fontSize: 16, align: 'center' } 
-            }
-        },
-        varsity: {
-            filename: 'varsity_template.pdf',
-            fields: {
-                name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44, align: 'center' },
-                sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28, align: 'center' },
-                year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18, align: 'center' }
-            }
-        }
+        jv: { filename: 'jv_template.pdf', fields: { name: { x: 140, y: 118, maxWidth: 106, fontSize: 36 }, year: { x: 162, y: 168, maxWidth: 20, fontSize: 28 } } },
+        scholar: { filename: 'scholar_template.pdf', fields: { name: { x: 182, y: 130, maxWidth: 130, fontSize: 32 }, year: { x: 179, y: 157, maxWidth: 32, fontSize: 16 } } },
+        varsity: { filename: 'varsity_template.pdf', fields: { name: { x: 177.5, y: 120, maxWidth: 139, fontSize: 44 }, sport: { x: 140, y: 157, maxWidth: 66, fontSize: 28 }, year: { x: 215, y: 157, maxWidth: 66, fontSize: 18 } } }
     };
 
     const mmToPt = (mm) => mm * 2.83465;
 
     async function processFiles() {
         const fileInput = document.getElementById('csvFile').files[0];
-        const certType = document.getElementById('certType').value;
         const statusEl = document.getElementById('status');
+        if (!fileInput) { statusEl.innerText = "Error: Upload CSV."; return; }
 
-        if (!fileInput) {
-            statusEl.innerText = "Error: Please upload a CSV file first.";
-            return;
-        }
-
-        statusEl.innerText = "Generating certificates...";
+        statusEl.innerText = "Fetching font and generating...";
         statusEl.style.color = "#5cb85c";
 
         Papa.parse(fileInput, {
-            header: true,
-            skipEmptyLines: true,
+            header: true, skipEmptyLines: true,
             complete: async function(results) {
                 try {
-                    await buildPdf(results.data, templates[certType]);
-                    statusEl.innerText = "Success! PDF downloaded.";
+                    await buildPdf(results.data, templates[document.getElementById('certType').value]);
+                    statusEl.innerText = "Success!";
                 } catch (error) {
-                    console.error(error);
                     statusEl.innerText = `Error: ${error.message}`;
-                    statusEl.style.color = "#d9534f";
+                    console.error(error);
                 }
             }
         });
@@ -98,26 +73,32 @@
     async function buildPdf(studentData, config) {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
+        // 1. Fetch Template
         const templateResponse = await fetch(`./${config.filename}`);
-        if (!templateResponse.ok) throw new Error(`Template file ${config.filename} not found.`);
         const templateBytes = await templateResponse.arrayBuffer();
 
+        // 2. Fetch Guaranteed TrueType Font (Dancing Script)
+        const fontUrl = 'https://raw.githubusercontent.com/google/fonts/master/ofl/dancingscript/DancingScript-Regular.ttf';
+        const fontResponse = await fetch(fontUrl);
+        const fontBuffer = await fontResponse.arrayBuffer();
+
         const finalPdf = await PDFDocument.create();
+        finalPdf.registerFontkit(window.fontkit);
         
-        // We use these standard fonts because they NEVER fail.
-        const fontName = await finalPdf.embedFont(StandardFonts.TimesRomanItalic);
-        const fontBold = await finalPdf.embedFont(StandardFonts.HelveticaBold);
+        const fontHandwriting = await finalPdf.embedFont(fontBuffer);
+        const fontStandard = await finalPdf.embedFont(StandardFonts.HelveticaBold);
 
         for (const student of studentData) {
             const studentDoc = await PDFDocument.load(templateBytes);
             const page = studentDoc.getPages()[0];
             const { height: pageHeight } = page.getSize();
             
-            const drawTextContent = (text, fieldConfig, useItalic) => {
+            const drawText = (text, fieldConfig, isName) => {
                 if (!text) return;
-                
-                const activeFont = useItalic ? fontName : fontBold;
+                const activeFont = isName ? fontHandwriting : fontStandard;
                 let currentSize = fieldConfig.fontSize;
+                
+                // MEASUREMENT LOGIC (This prevents the blowout in your image)
                 let textWidth = activeFont.widthOfTextAtSize(text, currentSize);
                 const maxPtWidth = mmToPt(fieldConfig.maxWidth);
 
@@ -126,50 +107,29 @@
                     textWidth = activeFont.widthOfTextAtSize(text, currentSize);
                 }
 
-                let pdfX = mmToPt(fieldConfig.x);
-                if (fieldConfig.align === 'center') {
-                    pdfX = pdfX - (textWidth / 2);
-                }
+                let pdfX = mmToPt(fieldConfig.x) - (textWidth / 2);
+                const pdfY = pageHeight - mmToPt(fieldConfig.y);
 
-                const pdfY = pageHeight - mmToPt(fieldConfig.y); 
-
-                page.drawText(text, {
-                    x: pdfX,
-                    y: pdfY,
-                    size: currentSize,
-                    font: activeFont,
-                    color: rgb(0, 0, 0)
-                });
+                page.drawText(text, { x: pdfX, y: pdfY, size: currentSize, font: activeFont });
             };
 
             const fullName = `${student.FirstName || ''} ${student.LastName || ''}`.trim();
-            
-            // Draw Name in Italic
-            drawTextContent(fullName, config.fields.name, true);
-            
-            // Draw Sport in Bold
-            if (config.fields.sport && student.Sport) {
-                drawTextContent(student.Sport, config.fields.sport, false);
-            }
-
-            // Draw Year in Bold (or 2-digit for JV)
+            drawText(fullName, config.fields.name, true);
+            if (config.fields.sport) drawText(student.Sport, config.fields.sport, false);
             if (config.fields.year && student.Year) {
-                let displayYear = student.Year;
-                if (config.filename === 'jv_template.pdf' && displayYear.length >= 2) {
-                    displayYear = displayYear.slice(-2);
-                }
-                drawTextContent(displayYear, config.fields.year, false);
+                let y = student.Year;
+                if (config.filename === 'jv_template.pdf') y = y.slice(-2);
+                drawText(y, config.fields.year, false);
             }
 
-            const [copiedPage] = await finalPdf.copyPages(studentDoc, [0]);
-            finalPdf.addPage(copiedPage);
+            const [copied] = await finalPdf.copyPages(studentDoc, [0]);
+            finalPdf.addPage(copiedPage = copied);
         }
 
         const pdfBytes = await finalPdf.save();
-        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `Certificates_${Date.now()}.pdf`;
+        link.href = URL.createObjectURL(new Blob([pdfBytes], { type: 'application/pdf' }));
+        link.download = `Certificates.pdf`;
         link.click();
     }
 </script>
