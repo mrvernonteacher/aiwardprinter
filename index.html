@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Athletic Certificate Generator</title>
+    <title>Walton Athletic Certificate Generator</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -13,7 +13,6 @@
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h2 { margin-top: 0; color: #333; text-align: center; }
         
-        /* New styling for the template download button */
         .template-btn { display: block; background-color: #6c757d; color: white; text-align: center; text-decoration: none; padding: 10px; font-size: 14px; border-radius: 4px; margin-bottom: 25px; transition: background-color 0.2s; }
         .template-btn:hover { background-color: #5a6268; }
         
@@ -53,30 +52,28 @@
         jv: {
             filename: 'jv_template.pdf',
             fields: {
-                name:  { x: 195, y: 105, maxWidth: 100, fontSize: 36 },
-                sport: { x: 195, y: 135, maxWidth: 80,  fontSize: 24 }, 
-                year:  { x: 172, y: 158, maxWidth: 15,  fontSize: 16 }  
+                name:  { x: 195, y: 105, maxWidth: 100, fontSize: 36, fontType: 'custom' },
+                sport: { x: 195, y: 135, maxWidth: 80,  fontSize: 24, fontType: 'standard' }, 
+                year:  { x: 172, y: 158, maxWidth: 15,  fontSize: 16, fontType: 'standard' }  
             }
         },
         scholar: {
             filename: 'scholar_template.pdf',
             fields: {
-                name:  { x: 175, y: 125, maxWidth: 110, fontSize: 32 },
-                year:  { x: 155, y: 165, maxWidth: 40,  fontSize: 16 } 
+                name:  { x: 175, y: 125, maxWidth: 110, fontSize: 32, fontType: 'custom' },
+                year:  { x: 155, y: 165, maxWidth: 40,  fontSize: 16, fontType: 'standard' } 
             }
         },
         varsity: {
             filename: 'varsity_template.pdf',
             fields: {
-                name:  { x: 190, y: 110, maxWidth: 110, fontSize: 36 },
-                sport: { x: 190, y: 140, maxWidth: 90,  fontSize: 28 },
-                year:  { x: 190, y: 165, maxWidth: 50,  fontSize: 18 }
+                name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44, fontType: 'custom' },
+                sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28, fontType: 'standard' },
+                year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18, fontType: 'standard' }
             }
         }
     };
 
-    // Helper function to calculate points from millimeters (PDF-lib uses points)
-    // 1 mm = 2.83465 points
     const mmToPt = (mm) => mm * 2.83465;
 
     async function processFiles() {
@@ -93,7 +90,6 @@
         statusEl.innerText = "Reading data and generating PDF... please wait.";
         statusEl.style.color = "#5cb85c";
 
-        // Parse the CSV using PapaParse
         Papa.parse(fileInput, {
             header: true,
             skipEmptyLines: true,
@@ -113,37 +109,54 @@
     async function buildPdf(studentData, config) {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
         
-        // Fetch the blank template PDF from your GitHub Pages folder
+        // Load the custom handwriting font
+        let customFontBytes;
+        try {
+            const fontResponse = await fetch('./handwriting.ttf');
+            if (!fontResponse.ok) throw new Error("Custom font not found");
+            customFontBytes = await fontResponse.arrayBuffer();
+        } catch (e) {
+            alert("Could not load handwriting.ttf. Please ensure it is in the same folder on GitHub.");
+            throw e;
+        }
+
+        // Fetch the blank template PDF
         const templateResponse = await fetch(`./${config.filename}`);
         if (!templateResponse.ok) throw new Error(`Could not load template: ${config.filename}`);
         const templateBytes = await templateResponse.arrayBuffer();
 
-        // Create a brand new empty PDF to hold all the generated pages
+        // Create the master PDF
         const finalPdf = await PDFDocument.create();
-        const font = await finalPdf.embedFont(StandardFonts.HelveticaBold);
+        
+        // Register fontkit (required for custom TTF fonts)
+        finalPdf.registerFontkit(window.fontkit);
+        
+        // Embed the fonts
+        const fontStandard = await finalPdf.embedFont(StandardFonts.HelveticaBold);
+        const fontCustom = await finalPdf.embedFont(customFontBytes);
 
-        // Loop through each student in the CSV
+        // Process each student
         for (const student of studentData) {
-            // Load a fresh copy of the template for this student
             const studentDoc = await PDFDocument.load(templateBytes);
             const pages = studentDoc.getPages();
             const page = pages[0];
             
-            // Reusable function to calculate text width and draw centered text
             const drawCenteredText = (text, fieldConfig) => {
                 if (!text) return;
+                
+                // Determine which font to use
+                const activeFont = fieldConfig.fontType === 'custom' ? fontCustom : fontStandard;
+                
                 let currentSize = fieldConfig.fontSize;
-                let textWidth = font.widthOfTextAtSize(text, currentSize);
+                let textWidth = activeFont.widthOfTextAtSize(text, currentSize);
                 const maxPtWidth = mmToPt(fieldConfig.maxWidth);
 
-                // Auto-scale down if text is too wide
+                // Auto-scale down if text is too wide for boundaries
                 while (textWidth > maxPtWidth && currentSize > 10) {
                     currentSize -= 1;
-                    textWidth = font.widthOfTextAtSize(text, currentSize);
+                    textWidth = activeFont.widthOfTextAtSize(text, currentSize);
                 }
 
-                // PDF coordinates start from the BOTTOM left. 
-                // We convert our top-down Y measurements (215.9mm is the height of an 8.5" page)
                 const pdfX = mmToPt(fieldConfig.x) - (textWidth / 2);
                 const pdfY = mmToPt(215.9 - fieldConfig.y); 
 
@@ -151,12 +164,11 @@
                     x: pdfX,
                     y: pdfY,
                     size: currentSize,
-                    font: font,
+                    font: activeFont,
                     color: rgb(0, 0, 0)
                 });
             };
 
-            // Combine First and Last name
             const fullName = `${student.FirstName || ''} ${student.LastName || ''}`.trim();
             drawCenteredText(fullName, config.fields.name);
 
@@ -164,7 +176,6 @@
                 drawCenteredText(student.Sport, config.fields.sport);
             }
             if (config.fields.year && student.Year) {
-                // Determine if we need just the last two digits (for JV) or the full string
                 let displayYear = student.Year;
                 if (config.filename === 'jv_template.pdf' && displayYear.length === 4) {
                     displayYear = displayYear.slice(-2);
@@ -172,12 +183,11 @@
                 drawCenteredText(displayYear, config.fields.year);
             }
 
-            // Copy this finished student page into our master PDF document
             const [copiedPage] = await finalPdf.copyPages(studentDoc, [0]);
             finalPdf.addPage(copiedPage);
         }
 
-        // Save the master document and trigger download
+        // Save and trigger download
         const pdfBytes = await finalPdf.save();
         const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         const link = document.createElement('a');
@@ -186,5 +196,7 @@
         link.click();
     }
 </script>
+
+<script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.min.js"></script>
 </body>
 </html>
