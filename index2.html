@@ -1,1 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Walton Athletic Certificate Generator</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <style>
+        /* Force the browser to load your local font */
+        @font-face {
+            font-family: 'Handwriting';
+            src: url('./handwriting.ttf') format('truetype');
+        }
 
+        /* Glassmorphism Aesthetic */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0;
+            padding: 40px 20px;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .container { 
+            width: 100%;
+            max-width: 500px; 
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            border-radius: 16px; 
+            padding: 35px; 
+        }
+
+        h2 { margin-top: 0; text-align: center; font-weight: 600; letter-spacing: 1px; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
+        .template-btn { 
+            display: block; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff; text-align: center; text-decoration: none; padding: 12px; font-size: 14px; 
+            font-weight: bold; border-radius: 8px; margin-bottom: 30px; transition: all 0.3s ease; 
+        }
+        .template-btn:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
+
+        label { font-weight: 500; display: block; margin-top: 20px; font-size: 14px; color: rgba(255, 255, 255, 0.9); }
+
+        select, input[type="file"] { 
+            width: 100%; padding: 12px; margin-top: 8px; background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1); color: #fff; border-radius: 8px; 
+            box-sizing: border-box; font-size: 15px; transition: border 0.3s;
+        }
+        select option { background-color: #203a43; color: white; }
+        select:focus, input[type="file"]:focus { outline: none; border: 1px solid rgba(255, 255, 255, 0.5); }
+
+        button { 
+            background: linear-gradient(135deg, #0056b3, #004494); box-shadow: 0 4px 15px rgba(0, 86, 179, 0.4);
+            color: white; border: none; padding: 14px 20px; font-size: 16px; font-weight: bold;
+            border-radius: 8px; cursor: pointer; width: 100%; margin-top: 30px; transition: all 0.3s ease;
+        }
+        button:hover { background: linear-gradient(135deg, #004494, #003377); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 86, 179, 0.6); }
+
+        #status { margin-top: 20px; font-weight: bold; text-align: center; min-height: 24px; }
+        
+        /* Hidden element to force the browser to load the font before the canvas needs it */
+        #font-loader { font-family: 'Handwriting'; visibility: hidden; position: absolute; }
+    </style>
+</head>
+<body>
+
+<div id="font-loader">Preload</div>
+
+<div class="container">
+    <h2>Walton Certificate Generator</h2>
+    
+    <a href="./roster_template.csv" download class="template-btn">
+        ⬇️ Download Blank CSV Template
+    </a>
+    
+    <label for="certType">1. Select Award Type:</label>
+    <select id="certType">
+        <option value="varsity">Varsity Letter</option>
+        <option value="jv">JV Award</option>
+        <option value="scholar">Scholar Athlete</option>
+    </select>
+    
+    <label for="csvFile">2. Upload Roster (CSV):</label>
+    <input type="file" id="csvFile" accept=".csv">
+    
+    <button onclick="processFiles()">Generate Print File</button>
+    <p id="status"></p>
+</div>
+
+<script>
+    const templates = {
+        jv: {
+            filename: 'jv_template.pdf',
+            fields: {
+                name:  { x: 140, y: 118, maxWidth: 106, fontSize: 36, align: 'center', useHandwriting: true },
+                year:  { x: 162, y: 168, maxWidth: 20,  fontSize: 28, align: 'left',   useHandwriting: false, isItalic: true }  
+            }
+        },
+        scholar: {
+            filename: 'scholar_template.pdf',
+            fields: {
+                name:  { x: 182, y: 130, maxWidth: 130, fontSize: 32, align: 'center', useHandwriting: true },
+                year:  { x: 179, y: 157, maxWidth: 32,  fontSize: 16, align: 'center', useHandwriting: false } 
+            }
+        },
+        varsity: {
+            filename: 'varsity_template.pdf',
+            fields: {
+                name:  { x: 177.5, y: 120, maxWidth: 139, fontSize: 44, align: 'center', useHandwriting: true },
+                sport: { x: 140,   y: 157, maxWidth: 66,  fontSize: 28, align: 'center', useHandwriting: false },
+                year:  { x: 215,   y: 157, maxWidth: 66,  fontSize: 18, align: 'center', useHandwriting: false }
+            }
+        }
+    };
+
+    const mmToPt = (mm) => mm * 2.83465;
+
+    // HTML5 Canvas text rendering to bypass PDF font bugs
+    function createHighResTextImage(text, fontName, fontSizePt, maxWidthPt) {
+        const scale = 4; // Render at 4x resolution for sharp printing
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let currentSize = fontSizePt;
+        ctx.font = `${currentSize}px "${fontName}"`;
+        let textWidth = ctx.measureText(text).width;
+        
+        // Auto-shrink logic using the browser's native text measurement
+        while (textWidth > maxWidthPt && currentSize > 8) {
+            currentSize -= 1;
+            ctx.font = `${currentSize}px "${fontName}"`;
+            textWidth = ctx.measureText(text).width;
+        }
+        
+        const paddingX = 20; 
+        canvas.width = (textWidth + paddingX * 2) * scale;
+        canvas.height = (currentSize * 2.5) * scale;
+        
+        ctx.scale(scale, scale);
+        ctx.font = `${currentSize}px "${fontName}"`;
+        ctx.fillStyle = 'black';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic'; 
+        
+        const drawX = (textWidth / 2) + paddingX;
+        const drawY = currentSize * 1.5; 
+        
+        ctx.fillText(text, drawX, drawY);
+        
+        return {
+            pngDataUrl: canvas.toDataURL('image/png'),
+            imgWidth: textWidth + paddingX * 2,
+            imgHeight: currentSize * 2.5,
+            baselineOffset: currentSize * 1.5 
+        };
+    }
+
+    async function processFiles() {
+        const csvInput = document.getElementById('csvFile').files[0];
+        const certType = document.getElementById('certType').value;
+        const statusEl = document.getElementById('status');
+
+        if (!csvInput) {
+            statusEl.innerText = "Error: Please upload a CSV file.";
+            statusEl.style.color = "#ff6b6b";
+            return;
+        }
+
+        statusEl.innerText = "Generating certificates...";
+        statusEl.style.color = "#51cf66";
+
+        // Wait for the custom font to be fully loaded by the browser before generating
+        await document.fonts.ready;
+
+        Papa.parse(csvInput, {
+            header: true,
+            skipEmptyLines: true,
+            complete: async function(results) {
+                try {
+                    await buildPdf(results.data, templates[certType]);
+                    statusEl.innerText = "Success! PDF downloaded.";
+                    statusEl.style.color = "#51cf66";
+                } catch (error) {
+                    console.error(error);
+                    statusEl.innerText = `Error: ${error.message} (Are you running a local server?)`;
+                    statusEl.style.color = "#ff6b6b";
+                }
+            }
+        });
+    }
+
+    async function buildPdf(studentData, config) {
+        const { PDFDocument, rgb, StandardFonts } = PDFLib;
+
+        const templateResponse = await fetch(`./${config.filename}`);
+        if (!templateResponse.ok) throw new Error(`Could not fetch template PDF.`);
+        const templateBytes = await templateResponse.arrayBuffer();
+
+        const finalPdf = await PDFDocument.create();
+        const fontBold = await finalPdf.embedFont(StandardFonts.HelveticaBold);
+        const fontItalic = await finalPdf.embedFont(StandardFonts.HelveticaBoldOblique);
+
+        for (const student of studentData) {
+            const studentDoc = await PDFDocument.load(templateBytes);
+            const page = studentDoc.getPages()[0];
+            const { height: pageHeight } = page.getSize();
+            
+            const fullName = `${student.FirstName || ''} ${student.LastName || ''}`.trim();
+            const nameConfig = config.fields.name;
+
+            // 1. Draw Handwriting Name using the Canvas method
+            if (fullName) {
+                const textImgData = createHighResTextImage(fullName, 'Handwriting', nameConfig.fontSize, mmToPt(nameConfig.maxWidth));
+                const pngImage = await finalPdf.embedPng(textImgData.pngDataUrl);
+                
+                let pdfX = mmToPt(nameConfig.x);
+                if (nameConfig.align === 'center') {
+                    pdfX -= (textImgData.imgWidth / 2);
+                }
+
+                const baselineY = pageHeight - mmToPt(nameConfig.y);
+                const pdfY = baselineY - (textImgData.imgHeight - textImgData.baselineOffset);
+
+                page.drawImage(pngImage, {
+                    x: pdfX,
+                    y: pdfY,
+                    width: textImgData.imgWidth,
+                    height: textImgData.imgHeight
+                });
+            }
+
+            // 2. Draw standard PDF text for Sport and Year
+            const drawStandardText = (text, fieldConfig, isItalic) => {
+                if (!text) return;
+                const activeFont = isItalic ? fontItalic : fontBold;
+                let currentSize = fieldConfig.fontSize;
+                let textWidth = activeFont.widthOfTextAtSize(text, currentSize);
+                
+                while (textWidth > mmToPt(fieldConfig.maxWidth) && currentSize > 8) {
+                    currentSize -= 1;
+                    textWidth = activeFont.widthOfTextAtSize(text, currentSize);
+                }
+
+                let pdfX = mmToPt(fieldConfig.x);
+                if (fieldConfig.align === 'center') pdfX -= (textWidth / 2);
+                
+                page.drawText(text, {
+                    x: pdfX,
+                    y: pageHeight - mmToPt(fieldConfig.y),
+                    size: currentSize,
+                    font: activeFont,
+                    color: rgb(0, 0, 0)
+                });
+            };
+
+            if (config.fields.sport && student.Sport) {
+                drawStandardText(student.Sport, config.fields.sport, false);
+            }
+
+            if (config.fields.year && student.Year) {
+                let displayYear = String(student.Year);
+                if (config.filename === 'jv_template.pdf' && displayYear.length >= 2) {
+                    displayYear = displayYear.slice(-2);
+                }
+                drawStandardText(displayYear, config.fields.year, config.fields.year.isItalic);
+            }
+
+            const [copiedPage] = await finalPdf.copyPages(studentDoc, [0]);
+            finalPdf.addPage(copiedPage);
+        }
+
+        const pdfBytes = await finalPdf.save();
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Certificates_${Date.now()}.pdf`;
+        link.click();
+    }
+</script>
+</body>
+</html>
